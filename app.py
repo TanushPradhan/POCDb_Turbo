@@ -16,15 +16,15 @@ st.title("📊 POC Database")
 st.caption("School & College Point of Contact Management System")
 
 # -------------------------------------------------
-# SUPABASE CONNECTION
+# SUPABASE CONNECTION (SERVER-SIDE)
 # -------------------------------------------------
 try:
     supabase = create_client(
         st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"]
+        st.secrets["SUPABASE_KEY"]  # sb_secret_ key
     )
 except Exception as e:
-    st.error("❌ Supabase connection failed.")
+    st.error("❌ Supabase connection failed")
     st.code(str(e))
     st.stop()
 
@@ -58,7 +58,7 @@ with st.expander("➕ Add New POC", expanded=True):
                 meeting_date, meeting_time
             ).isoformat()
 
-            result = supabase.table("poc_contacts").insert({
+            supabase.table("poc_contacts").insert({
                 "city": city,
                 "institute_name": institute,
                 "poc_name": poc_name,
@@ -69,71 +69,51 @@ with st.expander("➕ Add New POC", expanded=True):
                 "meeting_schedule": meeting_schedule
             }).execute()
 
-            if result.data:
-                st.success("✅ POC saved successfully")
-            else:
-                st.error("❌ Save failed")
-                st.write(result)
+            st.success("✅ POC saved successfully")
+            st.rerun()
 
         except Exception as e:
-            st.error("❌ Error while saving data")
+            st.error("❌ Error saving POC")
             st.code(str(e))
 
 # -------------------------------------------------
-# LOAD DATA (SAFE + VERBOSE)
+# LOAD DATA
 # -------------------------------------------------
 st.markdown("---")
 st.subheader("📋 POC Records")
 
-df = pd.DataFrame()
-
 try:
-    result = supabase.table("poc_contacts").select("*").execute()
-
-    if result.data:
-        df = pd.DataFrame(result.data)
-
+    response = supabase.table("poc_contacts").select("*").order("id", desc=True).execute()
+    df = pd.DataFrame(response.data or [])
 except Exception as e:
-    st.error("❌ Error while loading data")
+    st.error("❌ Error loading data")
     st.code(str(e))
     st.stop()
 
 # -------------------------------------------------
-# DISPLAY DATA
+# DISPLAY + DELETE
 # -------------------------------------------------
 if df.empty:
     st.info("No POC records found.")
 else:
-    f1, f2, f3 = st.columns(3)
+    for _, row in df.iterrows():
+        with st.container():
+            cols = st.columns([3, 3, 3, 2, 2, 2, 1])
 
-    with f1:
-        city_filter = st.multiselect(
-            "Filter by City",
-            sorted(df["city"].dropna().unique())
-        )
+            cols[0].write(row["poc_name"])
+            cols[1].write(row["institute_name"])
+            cols[2].write(row["city"])
+            cols[3].write(row["mobile"])
+            cols[4].write(row["email"])
+            cols[5].write(row["status"])
 
-    with f2:
-        institute_filter = st.multiselect(
-            "Filter by Institute",
-            sorted(df["institute_name"].dropna().unique())
-        )
-
-    with f3:
-        status_filter = st.multiselect(
-            "Filter by Status",
-            sorted(df["status"].dropna().unique())
-        )
-
-    if city_filter:
-        df = df[df["city"].isin(city_filter)]
-    if institute_filter:
-        df = df[df["institute_name"].isin(institute_filter)]
-    if status_filter:
-        df = df[df["status"].isin(status_filter)]
-
-    st.dataframe(
-        df.drop(columns=["id"]),
-        use_container_width=True
-    )
+            if cols[6].button("🗑️", key=f"delete_{row['id']}"):
+                try:
+                    supabase.table("poc_contacts").delete().eq("id", row["id"]).execute()
+                    st.success(f"🗑️ Deleted POC: {row['poc_name']}")
+                    st.rerun()
+                except Exception as e:
+                    st.error("❌ Delete failed")
+                    st.code(str(e))
 
 st.caption("Powered by Streamlit • Supabase • PostgreSQL")
