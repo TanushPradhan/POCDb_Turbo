@@ -1,33 +1,19 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 from datetime import datetime
-import os
+from supabase import create_client
 
-# ------------------ DATABASE SETUP ------------------
-DB_PATH = "database/poc_database.db"
-os.makedirs("database", exist_ok=True)
+# -------------------------------------------------
+# SUPABASE CONNECTION (READS FROM STREAMLIT SECRETS)
+# -------------------------------------------------
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-cursor = conn.cursor()
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS poc_contacts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    city TEXT,
-    institute_name TEXT,
-    poc_name TEXT,
-    mobile TEXT,
-    email TEXT,
-    status TEXT,
-    remarks TEXT,
-    meeting_schedule TEXT,
-    created_at TEXT
-)
-""")
-conn.commit()
-
-# ------------------ PAGE CONFIG ------------------
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
 st.set_page_config(
     page_title="POC Management System",
     page_icon="📇",
@@ -37,7 +23,9 @@ st.set_page_config(
 st.title("📇 School & College POC Management Platform")
 st.caption("Centralized institutional contact database")
 
-# ------------------ ADD POC FORM ------------------
+# -------------------------------------------------
+# ADD NEW POC
+# -------------------------------------------------
 with st.expander("➕ Add New POC", expanded=True):
     col1, col2, col3 = st.columns(3)
 
@@ -58,43 +46,53 @@ with st.expander("➕ Add New POC", expanded=True):
 
     if st.button("💾 Save POC"):
         meeting_schedule = f"{meeting_date} {meeting_time}"
-        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        cursor.execute("""
-        INSERT INTO poc_contacts (
-            city, institute_name, poc_name,
-            mobile, email, status,
-            remarks, meeting_schedule, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            city, institute, poc_name,
-            mobile, email, status,
-            remarks, meeting_schedule, created_at
-        ))
-        conn.commit()
+        supabase.table("poc_contacts").insert({
+            "city": city,
+            "institute_name": institute,
+            "poc_name": poc_name,
+            "mobile": mobile,
+            "email": email,
+            "status": status,
+            "remarks": remarks,
+            "meeting_schedule": meeting_schedule,
+            "created_at": datetime.now().isoformat()
+        }).execute()
+
         st.success("✅ POC saved successfully")
 
-# ------------------ VIEW DATA ------------------
+# -------------------------------------------------
+# VIEW POC DATABASE
+# -------------------------------------------------
 st.markdown("---")
 st.subheader("📊 POC Database")
 
-df = pd.read_sql("SELECT * FROM poc_contacts ORDER BY created_at DESC", conn)
+response = supabase.table("poc_contacts") \
+    .select("*") \
+    .order("created_at", desc=True) \
+    .execute()
 
-f1, f2, f3 = st.columns(3)
-with f1:
-    city_filter = st.multiselect("Filter by City", df["city"].dropna().unique())
-with f2:
-    institute_filter = st.multiselect("Filter by Institute", df["institute_name"].dropna().unique())
-with f3:
-    status_filter = st.multiselect("Filter by Status", df["status"].dropna().unique())
+df = pd.DataFrame(response.data)
 
-if city_filter:
-    df = df[df["city"].isin(city_filter)]
-if institute_filter:
-    df = df[df["institute_name"].isin(institute_filter)]
-if status_filter:
-    df = df[df["status"].isin(status_filter)]
+if not df.empty:
+    f1, f2, f3 = st.columns(3)
 
-st.dataframe(df.drop(columns=["id"]), use_container_width=True)
+    with f1:
+        city_filter = st.multiselect("Filter by City", df["city"].dropna().unique())
+    with f2:
+        institute_filter = st.multiselect("Filter by Institute", df["institute_name"].dropna().unique())
+    with f3:
+        status_filter = st.multiselect("Filter by Status", df["status"].dropna().unique())
 
-st.caption("Built with Streamlit • GitHub ready • Deployable")
+    if city_filter:
+        df = df[df["city"].isin(city_filter)]
+    if institute_filter:
+        df = df[df["institute_name"].isin(institute_filter)]
+    if status_filter:
+        df = df[df["status"].isin(status_filter)]
+
+    st.dataframe(df.drop(columns=["id"]), use_container_width=True)
+else:
+    st.info("No POC records found yet.")
+
+st.caption("Powered by Streamlit + Supabase")
