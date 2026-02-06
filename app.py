@@ -91,29 +91,44 @@ except Exception as e:
     st.stop()
 
 # -------------------------------------------------
-# DISPLAY + DELETE
+# SPREADSHEET VIEW + DELETE
 # -------------------------------------------------
 if df.empty:
     st.info("No POC records found.")
 else:
-    for _, row in df.iterrows():
-        with st.container():
-            cols = st.columns([3, 3, 3, 2, 2, 2, 1])
+    # Keep ID hidden but usable
+    display_df = df.drop(columns=["id"])
 
-            cols[0].write(row["poc_name"])
-            cols[1].write(row["institute_name"])
-            cols[2].write(row["city"])
-            cols[3].write(row["mobile"])
-            cols[4].write(row["email"])
-            cols[5].write(row["status"])
+    edited_df = st.data_editor(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        disabled=True,
+        key="poc_table"
+    )
 
-            if cols[6].button("🗑️", key=f"delete_{row['id']}"):
-                try:
-                    supabase.table("poc_contacts").delete().eq("id", row["id"]).execute()
-                    st.success(f"🗑️ Deleted POC: {row['poc_name']}")
-                    st.rerun()
-                except Exception as e:
-                    st.error("❌ Delete failed")
-                    st.code(str(e))
+    # Row selection
+    selected_rows = st.multiselect(
+        "Select rows to delete (by POC Name)",
+        options=df.index,
+        format_func=lambda x: f"{df.loc[x, 'poc_name']} | {df.loc[x, 'institute_name']}"
+    )
+
+    if selected_rows:
+        if st.button("🗑️ Delete Selected Records"):
+            try:
+                ids_to_delete = df.loc[selected_rows, "id"].tolist()
+
+                supabase.table("poc_contacts") \
+                    .delete() \
+                    .in_("id", ids_to_delete) \
+                    .execute()
+
+                st.success(f"🗑️ Deleted {len(ids_to_delete)} record(s)")
+                st.rerun()
+
+            except Exception as e:
+                st.error("❌ Failed to delete records")
+                st.code(str(e))
 
 st.caption("Powered by Streamlit • Supabase • PostgreSQL")
