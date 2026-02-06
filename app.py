@@ -4,14 +4,6 @@ from datetime import datetime
 from supabase import create_client
 
 # -------------------------------------------------
-# SUPABASE CONNECTION (FROM STREAMLIT SECRETS)
-# -------------------------------------------------
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# -------------------------------------------------
 # PAGE CONFIG
 # -------------------------------------------------
 st.set_page_config(
@@ -22,6 +14,19 @@ st.set_page_config(
 
 st.title("📊 POC Database")
 st.caption("School & College Point of Contact Management System")
+
+# -------------------------------------------------
+# SUPABASE CONNECTION
+# -------------------------------------------------
+try:
+    supabase = create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
+except Exception as e:
+    st.error("❌ Supabase connection failed.")
+    st.code(str(e))
+    st.stop()
 
 # -------------------------------------------------
 # ADD NEW POC
@@ -37,7 +42,10 @@ with st.expander("➕ Add New POC", expanded=True):
     with col2:
         mobile = st.text_input("POC Mobile Number")
         email = st.text_input("POC Email ID")
-        status = st.selectbox("POC Status", ["Cold", "Warm", "Active", "Closed"])
+        status = st.selectbox(
+            "POC Status",
+            ["Cold", "Warm", "Active", "Closed"]
+        )
 
     with col3:
         meeting_date = st.date_input("Meeting Date")
@@ -50,7 +58,7 @@ with st.expander("➕ Add New POC", expanded=True):
                 meeting_date, meeting_time
             ).isoformat()
 
-            supabase.table("poc_contacts").insert({
+            result = supabase.table("poc_contacts").insert({
                 "city": city,
                 "institute_name": institute,
                 "poc_name": poc_name,
@@ -61,14 +69,18 @@ with st.expander("➕ Add New POC", expanded=True):
                 "meeting_schedule": meeting_schedule
             }).execute()
 
-            st.success("✅ POC saved successfully")
+            if result.data:
+                st.success("✅ POC saved successfully")
+            else:
+                st.error("❌ Save failed")
+                st.write(result)
 
         except Exception as e:
-            st.error("❌ Failed to save POC. Please try again.")
-            st.stop()
+            st.error("❌ Error while saving data")
+            st.code(str(e))
 
 # -------------------------------------------------
-# VIEW POC DATABASE (SAFE LOAD)
+# LOAD DATA (SAFE + VERBOSE)
 # -------------------------------------------------
 st.markdown("---")
 st.subheader("📋 POC Records")
@@ -76,26 +88,21 @@ st.subheader("📋 POC Records")
 df = pd.DataFrame()
 
 try:
-    response = (
-        supabase
-        .table("poc_contacts")
-        .select("*")
-        .order("created_at", desc=True)
-        .execute()
-    )
+    result = supabase.table("poc_contacts").select("*").execute()
 
-    if response.data:
-        df = pd.DataFrame(response.data)
+    if result.data:
+        df = pd.DataFrame(result.data)
 
-except Exception:
-    st.warning("⚠️ Database connection initializing. Please refresh in a moment.")
+except Exception as e:
+    st.error("❌ Error while loading data")
+    st.code(str(e))
     st.stop()
 
 # -------------------------------------------------
-# FILTERS + TABLE
+# DISPLAY DATA
 # -------------------------------------------------
 if df.empty:
-    st.info("No POC records found yet.")
+    st.info("No POC records found.")
 else:
     f1, f2, f3 = st.columns(3)
 
